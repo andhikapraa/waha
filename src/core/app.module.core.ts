@@ -439,7 +439,7 @@ export class AppModuleCore {
     if (dashboardCredentials) {
       const username = dashboardCredentials[0];
       const password = dashboardCredentials[1];
-      const route = noSlashAtTheEnd(this.dashboardConfig.dashboardUri);
+      const route = this.dashboardConfig.dashboardUri.replace(/\/$/, '');
       // Apply basic auth to main dashboard but exclude auth UI
       consumer
         .apply(BasicAuthFunction(username, password))

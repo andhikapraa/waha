@@ -711,5 +711,4 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
       });
     });
   }
-  }
 }
