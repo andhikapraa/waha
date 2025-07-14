@@ -93,7 +93,7 @@ async function bootstrap() {
   const swaggerConfigurator = new SwaggerConfiguratorCore(app);
   swaggerConfigurator.configure(WAHA_WEBHOOKS);
 
-  AppModule.appReady(app, logger);
+  await AppModule.appReady(app, logger);
   app.enableShutdownHooks();
   const config = app.get(WhatsappConfigService);
   await app.listen(config.port);

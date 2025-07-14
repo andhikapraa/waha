@@ -1,0 +1,87 @@
+{
+  "family": "waha-production",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "waha",
+      "image": "YOUR_ECR_REPO/waha:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "PORT",
+          "value": "3000"
+        },
+        {
+          "name": "WAHA_AUTH_ENABLED",
+          "value": "true"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "WAHA_JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:region:account:secret:waha/jwt-secret"
+        },
+        {
+          "name": "WAHA_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:region:account:secret:waha/api-key"
+        },
+        {
+          "name": "WAHA_DEFAULT_ADMIN_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:region:account:secret:waha/admin-password"
+        },
+        {
+          "name": "WAHA_DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:region:account:secret:waha/database-url"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/waha-production",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:3000/api/server/version || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "mountPoints": [
+        {
+          "sourceVolume": "waha-data",
+          "containerPath": "/app/data"
+        }
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "name": "waha-data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-xxxxxxxxx",
+        "transitEncryption": "ENABLED"
+      }
+    }
+  ]
+}

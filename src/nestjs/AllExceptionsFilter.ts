@@ -28,6 +28,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    // Check if response has already been sent to prevent header errors
+    if (response.headersSent) {
+      return;
+    }
+
     /**
      * If file not found - we get weird 500 error
      * So we convert that exception manually to 404 and send appropriate JSON response
@@ -43,7 +48,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
           details: 'File not found or no longer available',
         },
       });
-      response.send();
       return;
     }
 
@@ -51,7 +55,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
      * If it's HttpException - pass it as is
      */
     if (exception instanceof HttpException) {
-      response.status(exception.getStatus()).json(exception.getResponse());
+      if (!response.headersSent) {
+        response.status(exception.getStatus()).json(exception.getResponse());
+      }
       return;
     }
 
@@ -60,17 +66,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
      * And send JSON response with error details
      */
     const httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
-    response.status(httpStatus).json({
-      statusCode: httpStatus,
-      timestamp: new Date().toISOString(),
-      exception: serializeError(exception),
-      request: {
-        path: request.url,
-        method: request.method,
-        body: request.body,
-        query: request.query,
-      },
-      version: VERSION,
-    });
+    if (!response.headersSent) {
+      response.status(httpStatus).json({
+        statusCode: httpStatus,
+        timestamp: new Date().toISOString(),
+        exception: serializeError(exception),
+        request: {
+          path: request.url,
+          method: request.method,
+          body: request.body,
+          query: request.query,
+        },
+        version: VERSION,
+      });
+    }
   }
 }

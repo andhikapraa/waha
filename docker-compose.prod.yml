@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  waha:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: waha-prod
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Core Configuration
+      - NODE_ENV=production
+      - PORT=3000
+      
+      # Authentication Configuration
+      - WAHA_AUTH_ENABLED=true
+      - WAHA_JWT_SECRET=${WAHA_JWT_SECRET}
+      - WAHA_JWT_EXPIRES_IN=24h
+      - WAHA_REFRESH_TOKEN_EXPIRES_IN=7d
+      - WAHA_DEFAULT_ADMIN_PASSWORD=${WAHA_DEFAULT_ADMIN_PASSWORD}
+      
+      # API Configuration
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      
+      # Database Configuration
+      - WAHA_DATABASE_URL=${WAHA_DATABASE_URL:-file:./data/waha.db}
+      
+      # Security Configuration
+      - WAHA_CORS_ORIGIN=${WAHA_CORS_ORIGIN:-*}
+      - WAHA_RATE_LIMIT_MAX=${WAHA_RATE_LIMIT_MAX:-100}
+      - WAHA_RATE_LIMIT_WINDOW=${WAHA_RATE_LIMIT_WINDOW:-15}
+      
+      # Logging Configuration
+      - WAHA_LOG_LEVEL=${WAHA_LOG_LEVEL:-info}
+      - WAHA_LOG_FORMAT=${WAHA_LOG_FORMAT:-json}
+      
+    volumes:
+      - waha_data:/app/data
+      - waha_logs:/app/logs
+      - waha_sessions:/app/sessions
+    networks:
+      - waha-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/server/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: waha-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - waha_logs:/var/log/nginx
+    depends_on:
+      - waha
+    networks:
+      - waha-network
+
+  # Optional: PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: waha-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-waha}
+      - POSTGRES_USER=${POSTGRES_USER:-waha}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - waha-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-waha}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  waha_data:
+  waha_logs:
+  waha_sessions:
+  postgres_data:
+
+networks:
+  waha-network:
+    driver: bridge

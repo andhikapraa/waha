@@ -42,11 +42,11 @@ export class WebjsClientCore extends Client {
   async initialize() {
     const result = await super.initialize();
     if (this.pupPage && !(this.pupPage instanceof WPage)) {
-      this.wpage = new WPage(this.pupPage);
+      this.wpage = new WPage(this.pupPage as any);
       this.wpage.on(PAGE_CALL_ERROR_EVENT as any, (event: CallErrorEvent) => {
         this.events.emit(PAGE_CALL_ERROR_EVENT as any, event);
       });
-      this.pupPage = this.wpage as any as Page;
+      this.pupPage = this.wpage as any;
     }
     return result;
   }

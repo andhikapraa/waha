@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GlobalWebhookConfigConfig } from '@waha/core/config/GlobalWebhookConfig';
 
@@ -138,10 +138,15 @@ export class WhatsappConfigService implements OnApplicationBootstrap {
   }
 
   getApiKey(): string | undefined {
-    return (
-      this.configService.get('WHATSAPP_API_KEY', '') ||
-      this.configService.get('WAHA_API_KEY', '')
-    );
+    // First check for explicitly set API keys
+    const explicitKey = this.configService.get('WHATSAPP_API_KEY', '') || this.configService.get('WAHA_API_KEY', '');
+    if (explicitKey) {
+      return explicitKey;
+    }
+
+    // If authentication is enabled, try to get generated key from AuthConfigService
+    // This will be handled by the AuthConfigService's secure generation
+    return undefined;
   }
 
   getExcludedPaths(): string[] {

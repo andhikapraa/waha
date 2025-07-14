@@ -2,12 +2,14 @@ import * as process from 'node:process';
 
 import { INestApplication, MiddlewareConsumer, Module } from '@nestjs/common';
 import { Provider } from '@nestjs/common/interfaces/modules/provider.interface';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { TerminusModule } from '@nestjs/terminus';
 import { ChannelsController } from '@waha/api/channels.controller';
+import { DashboardAuthController } from '@waha/api/dashboard-auth.controller';
 import { LidsController } from '@waha/api/lids.controller';
 import { ProfileController } from '@waha/api/profile.controller';
 import { ServerController } from '@waha/api/server.controller';
@@ -52,14 +54,32 @@ import { PresenceController } from '../api/presence.controller';
 import { ScreenshotController } from '../api/screenshot.controller';
 import { SessionsController } from '../api/sessions.controller';
 import { StatusController } from '../api/status.controller';
+import { UserAuthController } from '../api/user-auth.controller';
+import { UsersController } from '../api/users.controller';
 import { VersionController } from '../api/version.controller';
 import { WhatsappConfigService } from '../config.service';
 import { SessionManager } from './abc/manager.abc';
 import { WAHAHealthCheckService } from './abc/WAHAHealthCheckService';
 import { ApiKeyAuthFactory } from './auth/ApiKeyAuthFactory';
+import { JwtStrategy } from './auth/jwt.strategy';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { RolesGuard, PermissionsGuard, OwnerGuard } from './auth/roles.guard';
+import { AuthConfigService } from './config/AuthConfigService';
 import { DashboardConfigServiceCore } from './config/DashboardConfigServiceCore';
 import { EngineConfigService } from './config/EngineConfigService';
 import { SwaggerConfigServiceCore } from './config/SwaggerConfigServiceCore';
+import { UserService } from './services/UserService';
+import { AuthService } from './services/AuthService';
+import { AuditService } from './services/AuditService';
+import { RateLimitingService } from './services/RateLimitingService';
+import { AuthMigrationService } from './services/AuthMigrationService';
+import { DatabaseMigrationService } from './services/DatabaseMigrationService';
+import { AdminBootstrapService } from './services/AdminBootstrapService';
+import { IUserRepository, IUserSessionRepository, IApiKeyRepository, IAuditLogRepository } from './storage/IUserRepository';
+import { Sqlite3UserRepository, Sqlite3UserSessionRepository, Sqlite3ApiKeyRepository, Sqlite3AuditLogRepository } from './storage/sqlite3/Sqlite3UserRepository';
+import { Sqlite3KVRepository } from './storage/sqlite3/Sqlite3KVRepository';
+import { LocalStore } from './storage/LocalStore';
+import { LocalStoreCore } from './storage/LocalStoreCore';
 import { WAHAHealthCheckServiceCore } from './health/WAHAHealthCheckServiceCore';
 import { SessionManagerCore } from './manager.core';
 
@@ -116,10 +136,49 @@ export const IMPORTS_CORE = [
           rootPath: join(__dirname, '..', 'dashboard'),
           serveRoot: dashboardConfig.dashboardUri,
         },
+        // Serve auth dashboard assets with higher priority
+        {
+          rootPath: join(__dirname, '..', 'dashboard', 'auth', 'assets'),
+          serveRoot: '/dashboard/auth/assets',
+          serveStaticOptions: {
+            index: false,
+            fallthrough: false, // Don't fallthrough for assets - serve or 404
+            setHeaders: (res, path) => {
+              // Cache static assets aggressively
+              res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year
+              res.setHeader('Access-Control-Allow-Origin', '*');
+            },
+          },
+        },
+        // Serve other auth dashboard files (like favicon)
+        {
+          rootPath: join(__dirname, '..', 'dashboard', 'auth'),
+          serveRoot: '/dashboard/auth',
+          serveStaticOptions: {
+            index: false,
+            fallthrough: true, // Let controller handle HTML routes
+            setHeaders: (res, path) => {
+              // Only cache non-HTML files
+              if (!path.endsWith('.html')) {
+                res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+              }
+            },
+          },
+        },
       ];
     },
   }),
-  PassportModule,
+  PassportModule.register({ defaultStrategy: 'jwt' }),
+  JwtModule.registerAsync({
+    imports: [ConfigModule],
+    useFactory: async (configService: ConfigService) => ({
+      secret: configService.get<string>('WAHA_JWT_SECRET', 'default-secret-change-in-production'),
+      signOptions: {
+        expiresIn: configService.get<string>('WAHA_JWT_EXPIRES_IN', '24h'),
+      },
+    }),
+    inject: [ConfigService],
+  }),
   TerminusModule,
 ];
 
@@ -155,9 +214,12 @@ export const CONTROLLERS = [
   HealthController,
   ServerController,
   ServerDebugController,
+  UserAuthController,
+  UsersController,
   VersionController,
   MediaController,
   ...AppsModuleExports.controllers,
+  DashboardAuthController,
 ];
 export const PROVIDERS_BASE: Provider[] = [
   {
@@ -180,6 +242,46 @@ export const PROVIDERS_BASE: Provider[] = [
     inject: [WhatsappConfigService, NestJSPinoLogger],
   },
   ...AppsModuleExports.providers,
+  // Authentication services
+  AuthConfigService,
+  UserService,
+  AuthService,
+  AuditService,
+  RateLimitingService,
+  AuthMigrationService,
+  DatabaseMigrationService,
+  AdminBootstrapService,
+  // Authentication strategies and guards
+  JwtStrategy,
+  JwtAuthGuard,
+  RolesGuard,
+  PermissionsGuard,
+  OwnerGuard,
+  // Repository implementations
+  {
+    provide: IUserRepository,
+    useClass: Sqlite3UserRepository,
+  },
+  {
+    provide: IUserSessionRepository,
+    useClass: Sqlite3UserSessionRepository,
+  },
+  {
+    provide: IApiKeyRepository,
+    useClass: Sqlite3ApiKeyRepository,
+  },
+  {
+    provide: IAuditLogRepository,
+    useClass: Sqlite3AuditLogRepository,
+  },
+  Sqlite3KVRepository,
+  {
+    provide: LocalStore,
+    useFactory: () => {
+      const store = new LocalStoreCore('core');
+      return store;
+    },
+  },
 ];
 
 const PROVIDERS = [
@@ -219,7 +321,10 @@ export class AppModuleCore {
     return httpsExpress.readSync();
   }
 
-  static appReady(app: INestApplication, logger: Logger) {
+  static async appReady(app: INestApplication, logger: Logger) {
+    // Initialize authentication system
+    await AppModuleCore.initializeAuthentication(app, logger);
+
     const httpsEnabled = parseBool(process.env.WAHA_HTTPS_ENABLED);
     if (!httpsEnabled) {
       return;
@@ -227,6 +332,101 @@ export class AppModuleCore {
     const httpd = app.getHttpServer();
     const httpsExpress = new HttpsExpress(logger);
     httpsExpress.watchCertChanges(httpd);
+  }
+
+  static async initializeAuthentication(app: INestApplication, logger: Logger) {
+    try {
+      const authEnabled = parseBool(process.env.WAHA_AUTH_ENABLED);
+      if (!authEnabled) {
+        logger.info('Enhanced authentication system is disabled (WAHA_AUTH_ENABLED=false)');
+        return;
+      }
+
+      logger.info('Enhanced authentication system is enabled but not yet fully integrated');
+      logger.info('Enhanced authentication system partially initialized');
+
+      // Schedule the full initialization to run after the application has started
+      setTimeout(async () => {
+        try {
+          logger.info('Starting delayed authentication system initialization...');
+
+          // Step 1: Run database migrations
+          const migrationService = app.get(DatabaseMigrationService);
+          const migrationResult = await migrationService.runMigrations();
+
+          if (migrationResult.success) {
+            logger.info({
+              tablesCreated: migrationResult.tablesCreated,
+              version: migrationResult.version
+            }, 'Database migrations completed successfully');
+          } else {
+            logger.error({
+              errors: migrationResult.errors,
+              tablesCreated: migrationResult.tablesCreated
+            }, 'Some database migrations failed');
+          }
+
+          // Step 2: Validate database schema
+          const schemaValidation = await migrationService.validateSchema();
+          if (!schemaValidation.valid) {
+            logger.warn({
+              missingTables: schemaValidation.missingTables,
+              issues: schemaValidation.issues
+            }, 'Database schema validation failed');
+          }
+
+          // Step 3: Bootstrap admin user
+          const adminBootstrap = app.get(AdminBootstrapService);
+          const adminResult = await adminBootstrap.bootstrapAdmin();
+
+          if (adminResult.success) {
+            if (adminResult.adminCreated) {
+              logger.info({ username: adminResult.username }, 'Default admin user created');
+            } else if (adminResult.adminExists) {
+              logger.info('Admin user already exists, skipping creation');
+            }
+          } else {
+            logger.error({ error: adminResult.error }, 'Admin bootstrap failed');
+          }
+
+          // Step 4: Validate admin setup
+          const adminValidation = await adminBootstrap.validateAdminSetup();
+          if (!adminValidation.valid) {
+            logger.warn({ issues: adminValidation.issues }, 'Admin setup validation failed');
+          }
+
+          // Step 5: Check if legacy migration is needed
+          const autoMigrate = parseBool(process.env.WAHA_AUTO_MIGRATE);
+          if (autoMigrate) {
+            try {
+              const authMigration = app.get(AuthMigrationService);
+              const migrationCheck = await authMigration.validateMigrationPrerequisites();
+
+              if (migrationCheck.valid) {
+                logger.info('Starting automatic migration from legacy authentication');
+                const legacyMigrationResult = await authMigration.migrateFromLegacyAuth();
+                if (legacyMigrationResult.success) {
+                  logger.info(legacyMigrationResult, 'Legacy migration completed successfully');
+                } else {
+                  logger.error(legacyMigrationResult, 'Legacy migration completed with errors');
+                }
+              } else {
+                logger.warn({ issues: migrationCheck.issues }, 'Legacy migration prerequisites not met');
+              }
+            } catch (error) {
+              logger.error({ error: error.message }, 'Legacy migration failed');
+            }
+          }
+
+          logger.info('Enhanced authentication system fully initialized');
+        } catch (error) {
+          logger.error({ error: error.message }, 'Failed to complete authentication system initialization');
+        }
+      }, 2000); // Wait 2 seconds for the application to fully start
+
+    } catch (error) {
+      logger.error({ error: error.message }, 'Failed to initialize authentication system');
+    }
   }
 
   configure(consumer: MiddlewareConsumer) {
@@ -239,9 +439,12 @@ export class AppModuleCore {
     if (dashboardCredentials) {
       const username = dashboardCredentials[0];
       const password = dashboardCredentials[1];
+      const route = noSlashAtTheEnd(this.dashboardConfig.dashboardUri);
+      // Apply basic auth to main dashboard but exclude auth UI
       consumer
         .apply(BasicAuthFunction(username, password))
-        .forRoutes('dashboard');
+        .exclude('/dashboard/auth(.*)')
+        .forRoutes(route);
     }
   }
 }
