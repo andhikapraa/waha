@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 
 import { User, UserRole } from '@waha/structures/user.dto';
+import { IS_PUBLIC_KEY } from './auth.decorators';
 
 export const ROLES_KEY = 'roles';
 
@@ -15,6 +16,29 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    this.logger.warn(`RolesGuard called for route: ${request.method} ${request.url}`);
+
+    // Explicit bypass for dashboard auth routes
+    if (request.url.startsWith('/dashboard/auth')) {
+      this.logger.warn('Dashboard auth route detected, skipping role-based authorization');
+      return true;
+    }
+
+    // Check if the route is marked as public
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    this.logger.warn(`Route is public: ${isPublic}`);
+
+    if (isPublic) {
+      // Route is public, skip role-based authorization
+      this.logger.warn('Route is public, skipping role-based authorization');
+      return true;
+    }
+
     const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -24,8 +48,6 @@ export class RolesGuard implements CanActivate {
       // No roles required, allow access
       return true;
     }
-
-    const request = context.switchToHttp().getRequest();
     const user: User = request.user;
 
     if (!user) {

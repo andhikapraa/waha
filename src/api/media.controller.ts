@@ -4,8 +4,9 @@ import {
   Post,
   UnprocessableEntityException,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiSecurity, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SessionManager } from '@waha/core/abc/manager.abc';
 import { WAMimeType } from '@waha/core/media/WAMimeType';
 import { ApiFileAcceptHeader } from '@waha/nestjs/ApiFileAcceptHeader';
@@ -21,8 +22,13 @@ import {
 
 import { WhatsappSession } from '../core/abc/session.abc';
 import { BufferResponseInterceptor } from '../nestjs/BufferResponseInterceptor';
+import { UnifiedAuthGuard } from '../core/auth/unified-auth.guard';
+import { RolesGuard, PermissionsGuard } from '../core/auth/roles.guard';
+import { CanManageSessions } from '../core/auth/auth.decorators';
 
 @ApiSecurity('api_key')
+@ApiBearerAuth()
+@UseGuards(UnifiedAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('api/:session/media')
 @ApiTags('🖼️ Media')
 class MediaController {
@@ -33,6 +39,7 @@ class MediaController {
     summary: 'Convert voice to WhatsApp format (opus)',
   })
   @SessionApiParam
+  @CanManageSessions()
   @UseInterceptors(
     new BufferResponseInterceptor(WAMimeType.VOICE, 'output.opus'),
   )
@@ -51,6 +58,7 @@ class MediaController {
     summary: 'Convert video to WhatsApp format (mp4)',
   })
   @SessionApiParam
+  @CanManageSessions()
   @UseInterceptors(
     new BufferResponseInterceptor(WAMimeType.VIDEO, 'output.mp4'),
   )

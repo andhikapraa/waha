@@ -6,10 +6,14 @@ import {
   Query,
   UsePipes,
   ValidationPipe,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiSecurity, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
 import { SessionManager } from '../core/abc/manager.abc';
+import { UnifiedAuthGuard } from '../core/auth/unified-auth.guard';
+import { RolesGuard, PermissionsGuard } from '../core/auth/roles.guard';
+import { CanReadSessions, CanManageSessions } from '../core/auth/auth.decorators';
 import { SessionQuery } from '../structures/base.dto';
 import {
   CheckNumberStatusQuery,
@@ -23,6 +27,8 @@ import {
 } from '../structures/contacts.dto';
 
 @ApiSecurity('api_key')
+@ApiBearerAuth()
+@UseGuards(UnifiedAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('api/contacts')
 @ApiTags('👤 Contacts')
 export class ContactsController {
@@ -30,6 +36,7 @@ export class ContactsController {
 
   @Get('/all')
   @ApiOperation({ summary: 'Get all contacts' })
+  @CanReadSessions()
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async getAll(
     @Query() query: SessionQuery,
@@ -88,6 +95,7 @@ export class ContactsController {
 
   @Post('/block')
   @ApiOperation({ summary: 'Block contact' })
+  @CanManageSessions()
   async block(@Body() request: ContactRequest) {
     const whatsapp = await this.manager.getWorkingSession(request.session);
     return whatsapp.blockContact(request);
@@ -95,6 +103,7 @@ export class ContactsController {
 
   @Post('/unblock')
   @ApiOperation({ summary: 'Unblock contact' })
+  @CanManageSessions()
   async unblock(@Body() request: ContactRequest) {
     const whatsapp = await this.manager.getWorkingSession(request.session);
     return whatsapp.unblockContact(request);

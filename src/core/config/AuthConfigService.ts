@@ -67,7 +67,7 @@ export class AuthConfigService {
 
   private loadConfiguration(): AuthConfig {
     return {
-      enabled: parseBool(this.configService.get('WAHA_AUTH_ENABLED', 'false')),
+      enabled: parseBool(this.configService.get('WAHA_AUTH_ENABLED', 'true')),
       jwtSecret: this.getOrGenerateJwtSecret(),
       jwtExpiresIn: this.configService.get('WAHA_JWT_EXPIRES_IN', '24h'),
       refreshTokenExpiresIn: this.configService.get('WAHA_REFRESH_TOKEN_EXPIRES_IN', '7d'),
@@ -96,14 +96,14 @@ export class AuthConfigService {
       // Security features
       twoFactorEnabled: parseBool(this.configService.get('WAHA_2FA_ENABLED', 'true')),
       sessionTimeoutMs: parseInt(this.configService.get('WAHA_SESSION_TIMEOUT_MS', '86400000')), // 24 hours
-      forceHttps: parseBool(this.configService.get('WAHA_FORCE_HTTPS', 'false')),
+      forceHttps: parseBool(this.configService.get('WAHA_FORCE_HTTPS', 'true')),
       auditLoggingEnabled: parseBool(this.configService.get('WAHA_AUDIT_LOGGING_ENABLED', 'true')),
       auditRetentionDays: parseInt(this.configService.get('WAHA_AUDIT_RETENTION_DAYS', '90')),
       
       // Default admin user
       defaultAdmin: {
         username: this.configService.get('WAHA_DEFAULT_ADMIN_USERNAME', 'admin'),
-        password: this.configService.get('WAHA_DEFAULT_ADMIN_PASSWORD', 'change-me-please'),
+        password: this.configService.get('WAHA_DEFAULT_ADMIN_PASSWORD', 'SecureAdmin123!'),
         email: this.configService.get('WAHA_DEFAULT_ADMIN_EMAIL', 'admin@example.com'),
       },
       

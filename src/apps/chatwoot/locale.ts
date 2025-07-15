@@ -61,7 +61,34 @@ export const DEFAULT_LOCALE = 'en-US';
 
 function loadTemplateStrings(locale: string) {
   const filename = `${locale}.yaml`;
-  const yamlPath = path.join(__dirname, 'i18n', filename);
+  
+  // Check if we're running from the dist directory
+  const isDist = __dirname.includes('/dist/');
+  
+  let yamlPath;
+  if (isDist) {
+    // In production (dist), the files are in /dist/apps/chatwoot/i18n/
+    // Remove any 'src' from the path if it exists
+    const basePath = __dirname.includes('/dist/src/') 
+      ? __dirname.replace('/dist/src/', '/dist/') 
+      : __dirname;
+    yamlPath = path.join(basePath, 'i18n', filename);
+    
+    // If the file doesn't exist at the calculated path, try the alternative path
+    if (!fs.existsSync(yamlPath)) {
+      const altPath = path.join(process.cwd(), 'dist', 'apps', 'chatwoot', 'i18n', filename);
+      if (fs.existsSync(altPath)) {
+        yamlPath = altPath;
+      }
+    }
+  } else {
+    // In development, use the regular path
+    yamlPath = path.join(__dirname, 'i18n', filename);
+  }
+  
+  // Log the path being used (helpful for debugging)
+  console.log(`Loading locale file from: ${yamlPath}`);
+  
   const content = fs.readFileSync(yamlPath, 'utf-8');
   return yaml.parse(content);
 }

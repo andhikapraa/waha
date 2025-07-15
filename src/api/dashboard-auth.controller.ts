@@ -2,8 +2,10 @@ import { Controller, Get, Res, Req, Next } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { join } from 'path';
 import { readFileSync } from 'fs';
+import { Public } from '@waha/core/auth/auth.decorators';
 
 @Controller('dashboard/auth')
+@Public()
 export class DashboardAuthController {
   private indexHtml: string;
 
@@ -19,6 +21,7 @@ export class DashboardAuthController {
   }
 
   @Get('*path')
+  @Public()
   serveSPA(@Req() req: Request, @Res() res: Response, @Next() next: NextFunction): any {
     const path = req.path;
 

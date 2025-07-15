@@ -7,8 +7,9 @@ import {
   Query,
   UsePipes,
   ValidationPipe,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiSecurity, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { WAHAValidationPipe } from '@waha/nestjs/pipes/WAHAValidationPipe';
 import {
   GetChatMessagesFilter,
@@ -18,6 +19,12 @@ import {
 import { SendButtonsRequest } from '@waha/structures/chatting.buttons.dto';
 
 import { SessionManager } from '../core/abc/manager.abc';
+import { UnifiedAuthGuard } from '../core/auth/unified-auth.guard';
+import { RolesGuard, PermissionsGuard } from '../core/auth/roles.guard';
+import {
+  CanManageSessions,
+  CanReadSessions
+} from '../core/auth/auth.decorators';
 import {
   ChatRequest,
   CheckNumberStatusQuery,
@@ -44,6 +51,8 @@ import {
 import { WAMessage } from '../structures/responses.dto';
 
 @ApiSecurity('api_key')
+@ApiBearerAuth()
+@UseGuards(UnifiedAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('api')
 @ApiTags('📤 Chatting')
 export class ChattingController {
@@ -51,6 +60,7 @@ export class ChattingController {
 
   @Post('/sendText')
   @ApiOperation({ summary: 'Send a text message' })
+  @CanManageSessions()
   async sendText(@Body() request: MessageTextRequest): Promise<WAMessage> {
     const whatsapp = await this.manager.getWorkingSession(request.session);
     return whatsapp.sendText(request);
@@ -62,6 +72,7 @@ export class ChattingController {
     description:
       'Either from an URL or base64 data - look at the request schemas for details.',
   })
+  @CanManageSessions()
   async sendImage(@Body() request: MessageImageRequest) {
     const whatsapp = await this.manager.getWorkingSession(request.session);
     return whatsapp.sendImage(request);
@@ -73,6 +84,7 @@ export class ChattingController {
     description:
       'Either from an URL or base64 data - look at the request schemas for details.',
   })
+  @CanManageSessions()
   async sendFile(@Body() request: MessageFileRequest) {
     const whatsapp = await this.manager.getWorkingSession(request.session);
     return whatsapp.sendFile(request);

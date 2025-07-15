@@ -9,9 +9,10 @@ import {
   Put,
   Query,
   UsePipes,
+  UseGuards,
 } from '@nestjs/common';
 import { UnprocessableEntityException } from '@nestjs/common/exceptions/unprocessable-entity.exception';
-import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiSecurity, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   SessionApiParam,
   SessionParam,
@@ -25,6 +26,13 @@ import {
 import { generatePrefixedId } from '@waha/utils/ids';
 
 import { SessionManager } from '../core/abc/manager.abc';
+import { UnifiedAuthGuard } from '../core/auth/unified-auth.guard';
+import { RolesGuard, PermissionsGuard } from '../core/auth/roles.guard';
+import {
+  CanManageSessions,
+  CanReadSessions,
+  AdminOrManager
+} from '../core/auth/auth.decorators';
 import { WhatsappSession } from '../core/abc/session.abc';
 import {
   ListSessionsQuery,
@@ -36,6 +44,8 @@ import {
 } from '../structures/sessions.dto';
 
 @ApiSecurity('api_key')
+@ApiBearerAuth()
+@UseGuards(UnifiedAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('api/sessions')
 @ApiTags('🖥️ Sessions')
 class SessionsController {
@@ -47,6 +57,7 @@ class SessionsController {
 
   @Get('/')
   @ApiOperation({ summary: 'List all sessions' })
+  @CanReadSessions()
   list(
     @Query(new WAHAValidationPipe()) query: ListSessionsQuery,
   ): Promise<SessionInfo[]> {
@@ -56,6 +67,7 @@ class SessionsController {
   @Get('/:session')
   @ApiOperation({ summary: 'Get session information' })
   @SessionApiParam
+  @CanReadSessions()
   @UsePipes(new WAHAValidationPipe())
   async get(@Param('session') name: string): Promise<SessionInfo> {
     const session = await this.manager.getSessionInfo(name);
@@ -68,6 +80,7 @@ class SessionsController {
   @Get(':session/me')
   @SessionApiParam
   @ApiOperation({ summary: 'Get information about the authenticated account' })
+  @CanReadSessions()
   getMe(@SessionParam session: WhatsappSession): MeInfo | null {
     return session.getSessionMeInfo();
   }
@@ -78,6 +91,7 @@ class SessionsController {
     description:
       'Create session a new session (and start it at the same time if required).',
   })
+  @CanManageSessions()
   @UsePipes(new WAHAValidationPipe())
   async create(@Body() request: SessionCreateRequest): Promise<SessionDTO> {
     const name = request.name || generatePrefixedId('session');
@@ -104,6 +118,7 @@ class SessionsController {
     description: '',
   })
   @SessionApiParam
+  @CanManageSessions()
   @UsePipes(new WAHAValidationPipe())
   async update(
     @Param('session') name: string,
@@ -131,6 +146,7 @@ class SessionsController {
     description:
       'Delete the session with the given name. Stop and logout as well. Idempotent operation.',
   })
+  @CanManageSessions()
   @UsePipes(new WAHAValidationPipe())
   async delete(@Param('session') name: string): Promise<void> {
     await this.withLock(name, async () => {
@@ -149,6 +165,7 @@ class SessionsController {
     description:
       'Start the session with the given name. The session must exist. Idempotent operation.',
   })
+  @CanManageSessions()
   @UsePipes(new WAHAValidationPipe())
   async start(@Param('session') name: string): Promise<SessionDTO> {
     await this.withLock(name, async () => {
@@ -168,6 +185,7 @@ class SessionsController {
     summary: 'Stop the session',
     description: 'Stop the session with the given name. Idempotent operation.',
   })
+  @CanManageSessions()
   @UsePipes(new WAHAValidationPipe())
   async stop(@Param('session') name: string): Promise<SessionDTO> {
     await this.withLock(name, async () => {
@@ -183,6 +201,7 @@ class SessionsController {
     summary: 'Logout from the session',
     description: 'Logout the session, restart a session if it was not STOPPED',
   })
+  @CanManageSessions()
   @UsePipes(new WAHAValidationPipe())
   async logout(@Param('session') name: string): Promise<SessionDTO> {
     await this.withLock(name, async () => {

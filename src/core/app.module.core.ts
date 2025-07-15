@@ -10,6 +10,8 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { TerminusModule } from '@nestjs/terminus';
 import { ChannelsController } from '@waha/api/channels.controller';
 import { DashboardAuthController } from '@waha/api/dashboard-auth.controller';
+import { DashboardController } from '@waha/api/dashboard.controller';
+import { RootController } from '@waha/api/root.controller';
 import { LidsController } from '@waha/api/lids.controller';
 import { ProfileController } from '@waha/api/profile.controller';
 import { ServerController } from '@waha/api/server.controller';
@@ -220,6 +222,8 @@ export const CONTROLLERS = [
   MediaController,
   ...AppsModuleExports.controllers,
   DashboardAuthController,
+  DashboardController,
+  RootController,
 ];
 export const PROVIDERS_BASE: Provider[] = [
   {
@@ -336,13 +340,15 @@ export class AppModuleCore {
 
   static async initializeAuthentication(app: INestApplication, logger: Logger) {
     try {
-      const authEnabled = parseBool(process.env.WAHA_AUTH_ENABLED);
+      const authEnabled = parseBool(process.env.WAHA_AUTH_ENABLED || 'true');
       if (!authEnabled) {
-        logger.info('Enhanced authentication system is disabled (WAHA_AUTH_ENABLED=false)');
+        logger.warn('🚨 Enhanced authentication system is DISABLED (WAHA_AUTH_ENABLED=false)');
+        logger.warn('🚨 This is a SECURITY RISK - your API is publicly accessible!');
+        logger.warn('🚨 Set WAHA_AUTH_ENABLED=true to enable security');
         return;
       }
 
-      logger.info('Enhanced authentication system is enabled but not yet fully integrated');
+      logger.info('✅ Enhanced authentication system is ENABLED (WAHA_AUTH_ENABLED=true)');
       logger.info('Enhanced authentication system partially initialized');
 
       // Schedule the full initialization to run after the application has started

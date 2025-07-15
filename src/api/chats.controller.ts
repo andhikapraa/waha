@@ -11,8 +11,9 @@ import {
   Query,
   UsePipes,
   ValidationPipe,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiSecurity, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ChatIdApiParam } from '@waha/nestjs/params/ChatIdApiParam';
 import { MessageIdApiParam } from '@waha/nestjs/params/MessageIdApiParam';
 import {
@@ -22,6 +23,12 @@ import {
 
 import { SessionManager } from '../core/abc/manager.abc';
 import { WhatsappSession } from '../core/abc/session.abc';
+import { UnifiedAuthGuard } from '../core/auth/unified-auth.guard';
+import { RolesGuard, PermissionsGuard } from '../core/auth/roles.guard';
+import {
+  CanManageSessions,
+  CanReadSessions
+} from '../core/auth/auth.decorators';
 import {
   ChatPictureQuery,
   ChatPictureResponse,
@@ -41,6 +48,8 @@ import {
 import { EditMessageRequest } from '../structures/chatting.dto';
 
 @ApiSecurity('api_key')
+@ApiBearerAuth()
+@UseGuards(UnifiedAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('api/:session/chats')
 @ApiTags('💬 Chats')
 @UsePipes(new ValidationPipe({ transform: true }))
@@ -50,6 +59,7 @@ class ChatsController {
   @Get('')
   @SessionApiParam
   @ApiOperation({ summary: 'Get chats' })
+  @CanReadSessions()
   getChats(
     @WorkingSessionParam session: WhatsappSession,
     @Query() pagination: ChatsPaginationParams,
@@ -63,6 +73,7 @@ class ChatsController {
     summary:
       'Get chats overview. Includes all necessary things to build UI "your chats overview" page - chat id, name, picture, last message. Sorting by last message timestamp',
   })
+  @CanReadSessions()
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   getChatsOverview(
     @WorkingSessionParam session: WhatsappSession,
